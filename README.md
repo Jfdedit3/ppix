@@ -1,13 +1,9 @@
 # ppix
 
-Imported scaffold from `Jfdedit3/Pixiv-MultiPlatform`.
+Windows-only desktop scaffold extracted and simplified from the Pixiv desktop work.
 
-Current import includes:
-- Gradle project settings
-- Compose app build file
-- Shared `App.kt`
-- Desktop platform implementation
-- Modern Windows desktop entrypoint
-- Dedicated Windows desktop build workflow
-
-This repo is being seeded progressively from the source project.
+Included:
+- Windows desktop entrypoint
+- Modern custom desktop window shell
+- Windows GitHub Actions build workflow
+- Minimal Compose Desktop Gradle setup
