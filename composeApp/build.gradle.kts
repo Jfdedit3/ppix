@@ -1,0 +1,352 @@
+@file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+
+import com.mikepenz.aboutlibraries.plugin.DuplicateMode.MERGE
+import com.mikepenz.aboutlibraries.plugin.DuplicateRule.GROUP
+import java.io.BufferedOutputStream
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.desktop.application.tasks.AbstractProguardTask
+
+fun prop(key: String) = (project.findProperty(key) as String?) ?: ""
+
+val pkgName: String = "top.kagg886.pmf"
+
+val appVersionName = System.getenv("APP_VERSION_NAME") ?: prop("APP_VERSION_NAME")
+check(appVersionName.startsWith("v")) { "APP_VERSION not supported, current is $appVersionName" }
+val pkgVersion: String = appVersionName.substring(1)
+val pkgCode: Int = with(pkgVersion.split(".")) {
+    val x = this[0].toInt()
+    val y = this[1].toInt()
+    val z = this[2].toInt()
+    x * 100 + y * 10 + z
+}
+
+val gitSha = run {
+    val origin = System.getenv("APP_COMMIT_ID") ?: prop("APP_COMMIT_ID")
+    if (origin.length != 6) {
+        getGitHeaderCommitIdShort().apply {
+            println("APP_COMMIT_ID not set, use system default.($this)")
+        }
+    } else {
+        origin
+    }
+}
+
+val proguardEnable = (System.getenv("PROGUARD_ENABLE") ?: prop("PROGUARD_ENABLE")).toBooleanStrictOrNull() ?: true
+
+println("APP_VERSION: $pkgVersion($pkgCode)")
+println("PROGUARD_ENABLE: $proguardEnable")
+println("---- Java Info ----")
+println("Java version: ${System.getProperty("java.version")}")
+println("Java vendor:  ${System.getProperty("java.vendor")}")
+println("Java home:    ${System.getProperty("java.home")}")
+println("OS name:      ${System.getProperty("os.name")}")
+println("OS arch:      ${System.getProperty("os.arch")}")
+println("-------------------")
+
+plugins {
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.jetbrainsCompose)
+    alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.buildConfig)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.spotless)
+    alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.room)
+    alias(libs.plugins.aboutlibrariesPlugin)
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
+dependencies {
+    ksp(libs.androidx.room.compiler)
+}
+
+buildConfig {
+    packageName(pkgName)
+    buildConfigField("APP_NAME", rootProject.name)
+    buildConfigField("APP_BASE_PACKAGE", pkgName)
+    buildConfigField("APP_VERSION_NAME", pkgVersion)
+    buildConfigField("APP_VERSION_CODE", pkgCode)
+
+    buildConfigField("DATABASE_VERSION", 10)
+    buildConfigField("APP_COMMIT_ID", gitSha)
+}
+
+kotlin {
+    jvmToolchain(17)
+    androidTarget()
+    jvm("desktop")
+
+    listOf(iosArm64(), iosSimulatorArm64()).forEach {
+        it.binaries.framework {
+            baseName = "ComposeApp"
+            isStatic = true
+            linkerOpts += "-lsqlite3"
+        }
+    }
+
+    compilerOptions {
+        progressiveMode = true
+        optIn.addAll(
+            "coil3.annotation.ExperimentalCoilApi",
+            "androidx.compose.foundation.layout.ExperimentalLayoutApi",
+            "androidx.compose.material3.ExperimentalMaterial3Api",
+            "androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
+            "androidx.compose.ui.ExperimentalComposeUiApi",
+            "androidx.compose.foundation.ExperimentalFoundationApi",
+            "androidx.compose.animation.ExperimentalAnimationApi",
+            "androidx.compose.animation.ExperimentalSharedTransitionApi",
+            "kotlin.ExperimentalStdlibApi",
+            "kotlin.time.ExperimentalTime",
+            "kotlin.uuid.ExperimentalUuidApi",
+            "kotlin.concurrent.atomics.ExperimentalAtomicApi",
+            "kotlin.contracts.ExperimentalContracts",
+            "kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "kotlinx.coroutines.FlowPreview",
+            "kotlinx.serialization.ExperimentalSerializationApi",
+            "org.jetbrains.compose.resources.ExperimentalResourceApi",
+            "org.koin.core.annotation.KoinExperimentalAPI",
+        )
+        freeCompilerArgs.addAll("-Xexpect-actual-classes")
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
+            implementation(libs.compose.material3)
+            implementation(libs.compose.material.icons.core)
+            implementation(libs.compose.navigation3.ui)
+            implementation(libs.compose.ui)
+            implementation(libs.compose.ui.tooling.preview)
+            implementation(libs.compose.components.resources)
+            implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+            implementation(libs.androidx.paging.compose)
+            implementation(libs.koin.compose.navigation3)
+            implementation(libs.koin.compose.viewmodel)
+            implementation(libs.orbit.core)
+            implementation(libs.pixko)
+            implementation(libs.multiplatform.settings)
+            implementation(project(":lib:multiplatform-serializer-fix"))
+            implementation(libs.compose.settings.ui)
+            implementation(libs.compose.settings.extended)
+            implementation(libs.chip.textfield)
+            api(libs.compose.webview.multiplatform)
+            implementation(dependencies.platform(libs.coil.bom))
+            implementation(libs.bundles.coil)
+            implementation(libs.telephoto.zoomable)
+            implementation(project(":lib:gif"))
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.ktor.client.logging)
+            implementation(libs.bundles.room)
+            implementation(project(":lib:file-picker"))
+            implementation(libs.kermit)
+            implementation(project(":lib:epub"))
+            implementation(project(":lib:okio-enhancement-util"))
+            implementation(libs.korlibs.io)
+            implementation(libs.ksoup)
+            implementation(libs.aboutlibraries.core)
+            implementation(libs.aboutlibraries.compose.m3)
+            implementation(project.dependencies.platform(libs.arrow.stack))
+            implementation(libs.arrow.fx.coroutines)
+        }
+
+        val desktopMain by getting
+        desktopMain.dependencies {
+            implementation(compose.desktop.currentOs)
+            implementation(libs.kotlinx.coroutines.swing)
+            implementation(libs.ktor.client.okhttp)
+            implementation(libs.ktor.client.java)
+            implementation(libs.androidx.sqlite.bundled)
+        }
+
+        androidMain.dependencies {
+            implementation(compose.preview)
+            implementation(libs.androidx.activity.compose)
+            implementation(libs.ktor.client.okhttp)
+            implementation(libs.coil.gif)
+            implementation(libs.androidx.documentfile)
+        }
+
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
+        }
+
+        commonTest.dependencies {
+            implementation("com.russhwolf:multiplatform-settings-test:1.3.0")
+            implementation(kotlin("test"))
+        }
+    }
+}
+
+aboutLibraries {
+    library {
+        duplicationMode = MERGE
+        duplicationRule = GROUP
+    }
+    export {
+        outputFile = file("src/commonMain/composeResources/files/aboutlibraries.json")
+        prettyPrint = true
+    }
+}
+
+android {
+    namespace = pkgName
+    compileSdk = prop("TARGET_SDK").toInt()
+    sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
+    sourceSets {
+        getByName("main") { java.srcDirs("src/main/kotlin") }
+        getByName("test") { java.srcDirs("src/test/kotlin") }
+    }
+    signingConfigs {
+        create("test") {
+            storeFile = file("app.jks")
+            storePassword = "123456"
+            keyAlias = "kagg886"
+            keyPassword = "123456"
+        }
+    }
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+    defaultConfig {
+        applicationId = pkgName
+        minSdk = prop("MIN_SDK").toInt()
+        targetSdk = prop("TARGET_SDK").toInt()
+        versionCode = pkgCode
+        versionName = pkgVersion
+        manifestPlaceholders["APP_NAME"] = rootProject.name
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    }
+    packaging {
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    }
+    buildTypes {
+        val signConfig = signingConfigs.getByName("test")
+        getByName("release") {
+            isMinifyEnabled = proguardEnable
+            isShrinkResources = proguardEnable
+            proguardFiles("core-rules.pro")
+            signingConfig = signConfig
+        }
+        getByName("debug") {
+            signingConfig = signConfig
+            manifestPlaceholders["APP_NAME"] = "${rootProject.name} (Debug)"
+            applicationIdSuffix = ".debug"
+        }
+    }
+    buildFeatures { compose = true }
+    dependencies { debugImplementation(compose.uiTooling) }
+}
+
+compose.resources {
+    publicResClass = true
+    packageOfResClass = "$pkgName.res"
+    generateResClass = auto
+}
+
+compose.desktop {
+    application {
+        mainClass = "$pkgName.MainKt"
+        nativeDistributions {
+            includeAllModules = true
+            targetFormats(*buildList {
+                add(TargetFormat.Msi)
+                add(TargetFormat.Dmg)
+                if ("Mac" !in System.getProperty("os.name")) add(TargetFormat.AppImage)
+            }.toTypedArray())
+            packageName = rootProject.name
+            packageVersion = pkgVersion
+            windows {
+                iconFile.set(file("icons/pixiv.ico"))
+                shortcut = true
+            }
+            linux {
+                iconFile.set(file("icons/pixiv.png"))
+                shortcut = true
+            }
+            macOS { iconFile.set(file("icons/pixiv.icns")) }
+        }
+        jvmArgs += "--enable-native-access=ALL-UNNAMED"
+        buildTypes.release.proguard { version = "7.8.2" }
+    }
+}
+
+if (proguardEnable) {
+    gradle.projectsEvaluated {
+        tasks.named("proguardReleaseJars").configure {
+            doFirst {
+                layout.buildDirectory.file("compose/binaries/main-release/proguard").get().asFile.mkdirs()
+            }
+        }
+    }
+
+    tasks.withType(AbstractProguardTask::class.java) {
+        val proguardFile = File.createTempFile("tmp", ".pro", temporaryDir)
+        proguardFile.deleteOnExit()
+
+        compose.desktop.application.buildTypes.release.proguard {
+            configurationFiles.from(proguardFile, file("core-rules.pro"), file("desktop-rules.pro"))
+            optimize = false
+            obfuscate = true
+            joinOutputJars = true
+        }
+
+        doFirst {
+            proguardFile.bufferedWriter().use { proguardFileWriter ->
+                sourceSets["desktopMain"].runtimeClasspath.filter { it.extension == "jar" }.forEach { jar ->
+                    val zip = zipTree(jar)
+                    zip.matching { include("META-INF/**/proguard/*.pro") }.forEach {
+                        proguardFileWriter.appendLine("########   ${jar.name} ${it.name}")
+                        proguardFileWriter.appendLine(it.readText())
+                    }
+                    zip.matching { include("META-INF/services/*") }.forEach {
+                        it.readLines().forEach { cls ->
+                            val rule = "-keep class $cls"
+                            proguardFileWriter.appendLine(rule)
+                        }
+                    }
+                }
+            }
+        }
+    }
+} else {
+    compose.desktop.application.buildTypes.release.proguard { isEnabled = false }
+}
+
+val ktlintVersion = libs.ktlint.get().version
+
+spotless {
+    kotlin {
+        target("src/**/*.kt")
+        ktlint(ktlintVersion)
+    }
+    kotlinGradle {
+        ktlint(ktlintVersion)
+    }
+}
+
+fun getGitHeaderCommitIdShort(): String {
+    val process = ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+        .redirectErrorStream(true)
+        .start()
+    val rtn = process.inputStream.readAllBytes().decodeToString().trim()
+    check(rtn.length == 7) {
+        throw IllegalStateException("git rev-parse failed, rtn:\n$rtn")
+    }
+    return rtn
+}
