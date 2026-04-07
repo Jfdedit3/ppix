@@ -26,8 +26,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Check Gradle installation
+        shell: pwsh
+        run: gradle --version
+
       - name: Build MSI
-        run: ./gradlew :composeApp:packageReleaseMsi
+        shell: pwsh
+        run: gradle :composeApp:packageReleaseMsi
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4
